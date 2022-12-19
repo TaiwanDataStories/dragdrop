@@ -1,0 +1,463 @@
+<!DOCTYPE html>
+<meta charset='utf-8'>
+
+<head>
+    <title> Drag and Drop </title>
+    <meta name="title" content="Drag and Drop">
+    <meta name="description" content="Drag and Drop">
+    <meta name="author" content="Julia Janicki">
+    <meta name="keywords" content=" Taiwan, data, data visualization">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link href="https://fonts.googleapis.com/css2?family=Open+Sans+Condensed:wght@300;700&display=swap"
+        rel="stylesheet">
+    <link
+        href="https://fonts.googleapis.com/css2?family=Libre+Franklin:ital,wght@0,300;0,400;0,500;0,600;0,700;1,300;1,400;1,500;1,600;1,700&display=swap"
+        rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="shortcut icon" type="image/png" href="./img/favicon.png" />
+
+    <style>
+        /* general */
+
+        body {
+            font-family: 'Libre Franklin', sans-serif;
+            background-color: #fdfbf9;
+            overflow-x: hidden;
+        }
+
+        #main {
+            width: 100%;
+            margin-left: auto;
+            margin-right: auto;
+            display: block;
+            padding: 30px 0px;
+        }
+
+
+        #main svg {
+            margin-left: auto;
+            margin-right: auto;
+            display: block;
+        }
+
+        #menu {
+            max-width: 900px;
+            margin-left: auto;
+            margin-right: auto;
+            display: block;
+        }
+    </style>
+
+</head>
+
+<body>
+
+
+    <section id="main">
+
+        <div id="menu">
+            <p><b>Not selected:</b> <span id="nonSelectedItems"></span></p>
+            <p><b>Selected:</b> <span id="selectedItems"></span></p>
+        </div>
+
+        <div id="dragWrapper">
+        </div>
+
+    </section>
+
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.3.0/d3.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.10.4/gsap.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.10.4/ScrollTrigger.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.11.0/Draggable.min.js"></script>
+    <script src="./data/data.js"></script>
+    <script>
+
+
+        window.onload = function () {
+
+            const windowWidth = $(window).width();
+            const windowHeight = $(window).height();
+
+            $(window).resize(function () {
+                if (windowWidth != $(window).width() || windowHeight != $(window).height()) {
+                    location.reload();
+                    return;
+                }
+            });
+
+            //dragging items into bag
+            const overlapThreshold = '40%';
+
+
+            // numItems should be updated as the number of items in your shopping bag
+            const numItems = foodData.length;
+
+            const numInRow = 6; //for all items (num columns outer rect)
+            const numInRowInner = 4;  // for items in bag (num columns inner rect)
+
+            const numRowsOuter = Math.ceil(numItems / numInRow);
+            const numRowsInner = Math.ceil(numItems / numInRowInner);
+
+            let width = 900; //fixed or based on device width
+
+            const outerRectPadding = 25;
+            const innerRectPadding = 25;
+
+            const imgPadding = 5;
+            const imgWidth = (width - outerRectPadding * 2 - imgPadding * (numInRow - 2)) / numInRow; // numInRow-2, because only counting the padding between images and the the outer image padding
+
+            const innerRectWidth = numInRowInner * (imgWidth + imgPadding) + innerRectPadding * 2;
+            const innerRectTranslateX = (width - innerRectWidth) / 2; // the differences between width of outer and inner rects then /2
+
+            const outerRectHeight = (imgWidth + imgPadding) * numRowsOuter + outerRectPadding * 2;
+            const innerRectHeight = (imgWidth + imgPadding) * numRowsInner + innerRectPadding * 2;
+
+            const heightBetweenRects = 50;
+            const height = outerRectHeight + innerRectHeight + heightBetweenRects;
+
+            const svg = d3
+                .select("#dragWrapper")
+                .append("svg")
+                .attr("id", "dragSVG")
+                .attr("width", width)
+                .attr("height", height)
+
+
+            const outer = svg.append("g");
+
+            outer.append("text")
+                .attr("id", "items")
+                .attr("x", 10)
+                .attr("y", 25)
+                .attr("fill", "black")
+                .text("All available items");
+
+            outer.append("rect").attr("id", "outer")
+                .attr("width", width)
+                .attr("height", outerRectHeight)
+                .attr("fill", "#efefef")
+
+            outer.select("#items").raise();
+
+            const inner = svg.append("g")
+                .attr("transform", `translate(${innerRectTranslateX},${outerRectHeight + heightBetweenRects})`);
+
+            inner.append("rect").attr("id", "inner")
+                .attr("width", innerRectWidth)
+                .attr("height", innerRectHeight)
+                .attr("fill", "#fee8c8")
+
+            const imgG = svg.append("g").attr("id", "dragItems")
+                .attr("transform", `translate(${outerRectPadding},${outerRectPadding})`)
+
+            const calculateOuterPosition = (index) => {
+                let row;
+                if (index < numInRow) {
+                    row = 1;
+                } else {
+                    row = Math.ceil((index + 1) / numInRow);
+                }
+                const indexStart = (row - 1) * numInRow;
+                return [imgPadding + (index - indexStart) * imgWidth, outerRectPadding + (row - 1) * (imgWidth + imgPadding)]
+
+            }
+
+
+            const calculateInnerPosition = (id) => {
+
+                const currentItem = foodData.find(item => item.name === id);
+
+                const currentX = currentItem.positioZone1[0];
+                const currentY = currentItem.positioZone1[1];
+
+                const currentLength = zone2.length;
+                const currentIndex = currentLength - 1;
+                currentItem.indexZone2 = currentIndex;
+                currentItem.zone = 2;
+                const x = innerRectTranslateX;
+                // d3.select("#inner").attr('x');
+                const y = outerRectHeight + innerRectPadding; //so the y position in zone 2 also has a top padding
+                // d3.select("#inner").attr('y');
+
+
+                let finalX;
+                let finalY;
+
+                let row;
+                if (currentIndex < numInRowInner) {
+                    row = 1;
+                } else {
+                    row = Math.ceil((currentIndex + 1) / numInRowInner);
+                }
+                const indexStart = (row - 1) * numInRowInner;
+
+                finalX = x + imgPadding + (currentIndex - indexStart) * imgWidth - currentX;
+                finalY = y + innerRectPadding + (row - 1) * (imgWidth + imgPadding) - currentY;
+
+
+                currentItem.positioZone2 = [finalX, finalY];
+
+                gsap.to(`#${id}`, {
+                    x: finalX,
+                    y: finalY
+                });
+
+            }
+
+
+            const reshuffle = (index, id) => {
+
+                const x = innerRectTranslateX;
+                // d3.select("#inner").attr('x');
+                const y = outerRectHeight + innerRectPadding;
+                // d3.select("#inner").attr('y');
+                const lastItem = foodData.find(item => item.name === id);
+                lastItem.indexZone2 = index;
+                const currentX = lastItem.positioZone1[0];
+                const currentY = lastItem.positioZone1[1];
+
+
+                let finalX;
+                let finalY;
+
+                let row;
+                if (index < numInRowInner) {
+                    row = 1;
+                } else {
+                    row = Math.ceil((index + 1) / numInRowInner);
+                }
+                const indexStart = (row - 1) * numInRowInner;
+
+                finalX = x + imgPadding + (index - indexStart) * imgWidth - currentX;
+                finalY = y + innerRectPadding + (row - 1) * (imgWidth + imgPadding) - currentY;
+
+                lastItem.positioZone2 = [finalX, finalY];
+
+                gsap.to(`#${id}`, {
+                    x: finalX,
+                    y: finalY
+                });
+            }
+
+            const beutifyOutput = arr => arr.map(d => (d.charAt(0).toUpperCase() + d.substr(1).toLowerCase()).replaceAll("_", " "));
+
+            const updateOutput = (selected, nonselected) => {
+                $("#selectedItems").html(beutifyOutput(selected).toString())
+                $("#nonSelectedItems").html(beutifyOutput(nonselected).toString())
+            }
+
+
+            // IF I want to append the images inside of a group element and create a background react with color based on their category, it messes up the positions, will need to investigate but commented out for now
+
+            // let foodG = imgG.selectAll("g.foodItem")
+            //     .data(foodData)
+            //     .join("g")
+            //     .attr("class", "foodItem")
+            //     .attr("id", d => d.name)
+
+            // foodG.append("rect")
+            //     .attr("x", (d, i) => calculateOuterPosition(i)[0])
+            //     .attr("y", (d, i) => calculateOuterPosition(i)[1])
+            //     .attr("width", imgWidth - imgPadding * 2)
+            //     .attr("height", imgWidth - imgPadding * 2)
+            //     .attr("fill", 'blue')
+
+            // foodG.append("svg:image")
+            //     .attr("x", (d, i) => calculateOuterPosition(i)[0])
+            //     .attr("y", (d, i) => calculateOuterPosition(i)[1])
+            //     .attr("width", imgWidth - imgPadding * 2)
+            //     .attr("height", imgWidth - imgPadding * 2)
+            //     .attr("xlink:href", d => `./img/food/${d.name}.png`)
+
+
+
+            imgG.selectAll("image.foodItem")
+                .data(foodData)
+                .join("svg:image")
+                .attr("class", "foodItem")
+                .attr("id", d => d.name)
+                .attr("x", (d, i) => calculateOuterPosition(i)[0])
+                .attr("y", (d, i) => calculateOuterPosition(i)[1])
+                .attr("width", imgWidth - imgPadding * 2)
+                .attr("height", imgWidth - imgPadding * 2)
+                .attr("xlink:href", d => `./img/food/${d.name}.png`)
+
+
+
+
+            foodData.forEach(d => {
+                const x = d3.select(`#${d.name}`).attr('x');
+                const y = d3.select(`#${d.name}`).attr('y');
+                d.positioZone1 = [+x, +y]
+            })
+
+
+            foodData.forEach(d => {
+                const x = d3.select(`#${d.name}`).attr('x');
+                const y = d3.select(`#${d.name}`).attr('y');
+                d.positioZone1 = [+x, +y]
+            })
+
+
+            let zone1 = [];
+            let zone2 = [];
+
+
+            foodData.forEach(d => zone1.push(d.name));
+
+
+            Draggable.create(".foodItem", {
+                bounds: "#dragWrapper",
+                edgeResistance: 0.65,
+                type: 'x,y',
+                throwProps: true,
+                onDrag: function () {
+
+                    let selectedName = $(this.target)[0].getAttribute("id");
+                    const currentItem = foodData.find(item => item.name === selectedName);
+
+                    if (currentItem.zone == 2) {
+
+                    } else {
+                        //only higilight outline if it's going from zone 1 to zone 2, not zone 2 to zone 2
+                        if (this.hitTest("#inner", overlapThreshold)) {
+
+                            d3.select("#inner")
+                                .attr("stroke", "#e34a33")
+                                .attr("stroke-width", 2);
+                        } else {
+                            d3.select("#inner")
+                                .attr("stroke", "none")
+                                .attr("stroke-width", 0);
+                        }
+                    }
+
+                },
+                onDragStart() {
+                },
+                onDragEnd() {
+
+                    d3.select("#inner")
+                        .attr("stroke", "none")
+                        .attr("stroke-width", 0);
+
+
+                    let selectedName = $(this.target)[0].getAttribute("id");
+                    const currentItem = foodData.find(item => item.name === selectedName);
+
+
+                    //FIRST ITEM NOT WORKING IN TERMS OF LAST ITEM REPLACING IT IF IT'S DRAGGED TO ZONE 1
+                    // FIXED by setting != to !==
+
+                    if (this.hitTest("#inner", overlapThreshold)) { // if dragged to zone 2
+
+                        //drag from zone 2 to zone 2
+                        if (currentItem.zone == 2) {
+
+                            gsap.to(`#${selectedName}`, {
+                                x: currentItem.positioZone2[0],
+                                y: currentItem.positioZone2[1]
+                            });
+                            // return
+                            //prevent zone 2 to zone 2 dragging
+                        } else {
+
+                            if (zone2.indexOf(selectedName) !== -1) {
+
+                            } else {
+                                currentItem.zone = 2;
+                                zone2.push(selectedName)
+                                zone1 = zone1.filter(d => d != selectedName)
+                                updateOutput(zone2, zone1)
+                            }
+
+                            calculateInnerPosition(selectedName)
+
+                        }
+
+
+                    } else {
+                        // if dragged to zone 1 from zone 1 or zone 2
+                        TweenLite.set(this.target, {
+                            x: 0,
+                            y: 0,
+                        });
+                        currentItem.zone = 1;
+                        const prevZone2Index = currentItem.indexZone2; // to check if it was dragged from zone 2
+                        currentItem.indexZone2 = "" //then set the updated zone2 index to "" since it's now in zone 1
+
+                        if (prevZone2Index !== "") { //if the item was dragged from zone 2
+                            //here make sure to have !== instead of !=
+
+                            const lastItemName = zone2[zone2.length - 1]
+                            const lastItem = foodData.find(item => item.name === lastItemName);
+
+
+                            //if the target removed is not the last one in the array, get last item & swap
+                            if (currentItem.name != lastItem.name) {
+                                console.log("not last item")
+                                //remove currentITem
+                                const index = zone2.indexOf(currentItem.name);
+                                if (index > -1) { // only splice array when item is found
+                                    zone2.splice(index, 1); // 2nd parameter means remove one item only
+                                    zone1.push(currentItem.name)
+
+                                    updateOutput(zone2, zone1)
+                                }
+                                //recalculate index
+                                //remove last item and innsert it at the index of the current item
+                                zone2.splice(-1, 1);
+                                zone2.splice(index, 0, lastItem.name);
+
+                                $("#selectedItems").html(beutifyOutput(zone2).toString())
+                                $("#nonSelectedItems").html(beutifyOutput(zone1).toString())
+
+                                reshuffle(prevZone2Index, lastItemName)
+
+
+                            } else { // if the target removed is the last one in the array, remove
+                                console.log("last item")
+                                zone2.splice(-1)
+                                zone1.push(currentItem.name)
+                                updateOutput(zone2, zone1)
+                            }
+                            //index, id
+                        }
+
+
+                        if (zone2.indexOf(selectedName) !== -1) {
+                            zone2 = zone2.filter(d => d != selectedName)
+                            zone1.push(selectedName)
+                            updateOutput(zone2, zone1)
+
+                        } else {
+
+                        }
+
+                        // OR
+
+                        // flip that item and the current last item
+
+                        //filter all the ones in zone 2 and assign them new indexes
+                        //then recall some part in calculateInnerPosition
+
+                    }
+
+
+                }
+            });
+
+
+
+
+
+        }
+
+
+
+
+    </script>
+</body>
